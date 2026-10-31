@@ -18,19 +18,19 @@ jobs:
       - name: Extract project ZIP
         run: |
           unzip -o NetchatX-APK-Project.zip -d extracted
-          PROJECT_DIR=$(find extracted -name gradlew -type f -printf '%h\n' | head -n 1)
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERREUR : fichier gradlew introuvable dans le ZIP."
+          test -f extracted/package.json || {
+            echo "ERREUR : package.json introuvable"
             exit 1
-          fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          }
+          test -f extracted/android/settings.gradle || {
+            echo "ERREUR : android/settings.gradle introuvable"
+            exit 1
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: extracted/package-lock.json
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -44,29 +44,27 @@ jobs:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
 
-      - name: Install project dependencies
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
 
-      - name: Sync Capacitor Android
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Install dependencies
+        working-directory: extracted
+        run: npm install
+
+      - name: Sync Capacitor
+        working-directory: extracted
         run: npx cap sync android
 
       - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}/android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+        working-directory: extracted/android
+        run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NetchatX-APK
-          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          path: extracted/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           
