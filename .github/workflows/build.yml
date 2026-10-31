@@ -12,44 +12,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Extract project ZIP
+        run: |
+          unzip -o NetchatX-APK-Project.zip -d extracted
+          PROJECT_DIR=$(find extracted -name gradlew -type f -printf '%h\n' | head -n 1)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERREUR : fichier gradlew introuvable dans le ZIP."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extracted/package-lock.json
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+          java-version: 17
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
-      - name: Extract project ZIP
+      - name: Install project dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          mkdir extracted
-          unzip -q NetchatX-APK-Project.zip -d extracted
-          WRAPPER=$(find extracted -type f -name gradlew | head -n 1)
-          if [ -z "$WRAPPER" ]; then
-            echo "Gradle wrapper introuvable"
-            exit 1
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
           fi
-          PROJECT_DIR=$(dirname "$(dirname "$WRAPPER")")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Install dependencies
-        run: |
-          cd "$PROJECT_DIR"
-          npm install
-          npx cap sync android
+      - name: Sync Capacitor Android
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npx cap sync android
 
       - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}/android
         run: |
-          cd "$PROJECT_DIR/android"
           chmod +x gradlew
           ./gradlew assembleDebug
 
@@ -58,4 +68,5 @@ jobs:
         with:
           name: NetchatX-APK
           path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           
